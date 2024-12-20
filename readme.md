@@ -42,3 +42,4 @@ The **LLM Trick Game** is an interactive application where users attempt to tric
 
 ### Launching publicly SOON to play the game against Fred ####
 
+![Fred holds money](Screenshot.png)

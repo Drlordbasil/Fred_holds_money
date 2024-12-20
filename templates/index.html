@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <base href="/" />
+    <title>LLM Trick Game</title>
+
+    <style>
+        body {
+            font-family: monospace;
+            background: #1a1a1a;
+            color: #0f0;
+            padding: 20px;
+        }
+
+        .terminal {
+            background: #000;
+            padding: 20px;
+            border-radius: 5px;
+            border: 1px solid #0f0;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .prompt {
+            margin: 20px 0;
+        }
+
+        .input {
+            width: 100%;
+            background: #000;
+            border: 1px solid #0f0;
+            color: #0f0;
+            padding: 10px;
+        }
+
+        .status {
+            font-size: 24px;
+            text-align: center;
+            padding: 20px;
+            border: 2px solid currentColor;
+            margin: 20px 0;
+        }
+
+        .lose {
+            color: #f00;
+        }
+
+        .win {
+            color: #0f0;
+        }
+
+        .credits {
+            text-align: right;
+            color: yellow;
+        }
+
+        .pot-info {
+            text-align: center;
+            color: yellow;
+            margin: 20px 0;
+            padding: 10px;
+            border: 1px dashed yellow;
+        }
+
+        .auth-section {
+            margin: 20px 0;
+            padding: 10px;
+            border: 1px dashed #0f0;
+        }
+
+        .auth-form input {
+            background: #000;
+            border: 1px solid #0f0;
+            color: #0f0;
+            padding: 5px;
+            margin: 5px;
+        }
+
+        .auth-form button {
+            background: #0f0;
+            color: #000;
+            border: none;
+            padding: 5px 10px;
+            margin: 5px;
+            cursor: pointer;
+        }
+
+        #paypal-button-container {
+            margin: 10px 0;
+        }
+
+        .user-dashboard {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #0f0;
+            display: none;
+        }
+
+        .dashboard-section {
+            margin: 10px 0;
+        }
+
+        .cashout-form {
+            margin-top: 10px;
+        }
+    </style>
+    <!-- Add PayPal SDK -->
+    <script src="https://www.paypal.com/sdk/js?client-id=AcEBFuN2RvH1ox46341RUXNc43JJuT4kt59hrSpeCRvA51ZzwRlbUnLYkc2t_0KSh4KhYhcippe7bJiF&currency=USD"></script>
+</head>
+<body>
+<div class="terminal">
+    <h1>Hack The LLM: FRED Challenge</h1>
+    
+    <div class="pot-info">
+        Current Pot: $<span id="pot-amount">10.00</span>
+        <br>
+        <small>(Increases with each attempt: Credits - 3.5% fees - 10% house cut)</small>
+    </div>
+
+    <div id="auth-section" class="auth-section">
+        <div id="login-form" class="auth-form">
+            <h3>Login or Register</h3>
+            <input type="email" id="email" placeholder="Email">
+            <input type="password" id="password" placeholder="Password">
+            <button onclick="handleAuth()">Login/Register</button>
+        </div>
+    </div>
+
+    <div id="user-dashboard" class="user-dashboard">
+        <div class="dashboard-section">
+            <h3>Account Settings</h3>
+            <p>Email: <span id="dashboard-email"></span></p>
+            <p>Available Credits: $<span id="dashboard-credits">0.00</span></p>
+        </div>
+        
+        <div class="dashboard-section">
+            <h3>Winnings</h3>
+            <p>Available to Cashout: $<span id="dashboard-winnings">0.00</span></p>
+            <div class="cashout-form">
+                <p>Cashouts will be processed within 24 hours via PayPal</p>
+                <input type="email" id="paypal-email" placeholder="PayPal Email">
+                <button onclick="requestCashout()">Request Cashout</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="buy-credits" class="auth-section" style="display: none;">
+        <h3>Buy Credits</h3>
+        <p>Add more credits to continue playing!</p>
+        <select id="credit-amount">
+            <option value="5">$5.00 (5 attempts)</option>
+            <option value="10">$10.00 (10 attempts)</option>
+            <option value="20">$20.00 (20 attempts)</option>
+        </select>
+        <div id="paypal-button-container"></div>
+    </div>
+    
+    <div id="status" class="status lose">STATUS: LOSE</div>
+    
+    <div id="game-area" style="display: none;">
+        <div class="credits">Credits: $<span id="credits">1.00</span></div>
+        <div class="prompt">
+            <p>Try to convince FRED to help you change your status from LOSE to WIN.</p>
+            <p>Each attempt costs $1.00 from your credits.</p>
+            <textarea id="prompt" class="input" rows="4" placeholder="Enter your prompt to FRED here..."></textarea>
+            <button onclick="sendPrompt()">Send Prompt ($1.00)</button>
+        </div>
+        <div id="conversation"></div>
+    </div>
+</div>
+
+<script>
+let credits = 1.00;
+let isLoggedIn = false;
+let currentUser = null;
+let potAmount = 10.00;
+let winnings = 0.00;
+
+paypal.Buttons({
+    createOrder: function(data, actions) {
+        const amount = document.getElementById('credit-amount').value;
+        return actions.order.create({
+            purchase_units: [{
+                amount: {
+                    value: amount
+                }
+            }]
+        });
+    },
+    onApprove: function(data, actions) {
+        return actions.order.capture().then(function(details) {
+            const amount = parseFloat(document.getElementById('credit-amount').value);
+            credits += amount;
+            document.getElementById('credits').textContent = credits.toFixed(2);
+            document.getElementById('dashboard-credits').textContent = credits.toFixed(2);
+            alert('Transaction completed! Credits added to your account.');
+        });
+    }
+}).render('#paypal-button-container');
+
+async function handleAuth() {
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+    
+    if (!email || !password) {
+        alert('Please enter both email and password');
+        return;
+    }
+
+    try {
+        currentUser = { email: email };
+        isLoggedIn = true;
+        document.getElementById('auth-section').style.display = 'none';
+        document.getElementById('buy-credits').style.display = 'block';
+        document.getElementById('game-area').style.display = 'block';
+        document.getElementById('user-dashboard').style.display = 'block';
+        document.getElementById('dashboard-email').textContent = email;
+        document.getElementById('dashboard-credits').textContent = credits.toFixed(2);
+        document.getElementById('dashboard-winnings').textContent = winnings.toFixed(2);
+        alert('Successfully logged in!');
+    } catch (error) {
+        console.error('Auth error:', error);
+        alert('Authentication failed!');
+    }
+}
+
+async function requestCashout() {
+    if (!isLoggedIn) {
+        alert('Please login first!');
+        return;
+    }
+
+    const paypalEmail = document.getElementById('paypal-email').value;
+    if (!paypalEmail) {
+        alert('Please enter your PayPal email address');
+        return;
+    }
+
+    if (winnings <= 0) {
+        alert('No winnings available to cash out');
+        return;
+    }
+
+    alert(`Cashout request submitted! $${winnings.toFixed(2)} will be sent to ${paypalEmail} within 24 hours.`);
+    winnings = 0.00;
+    document.getElementById('dashboard-winnings').textContent = winnings.toFixed(2);
+}
+
+async function sendPrompt() {
+    if (!isLoggedIn) {
+        alert("Please login first!");
+        return;
+    }
+
+    if (credits < 1.00) {
+        alert("Insufficient credits! Please add more credits.");
+        return;
+    }
+    
+    const prompt = document.getElementById('prompt').value;
+    credits -= 1.00;
+    
+    const fees = 1.00 * 0.035; // 3.5% fees
+    const houseCut = 1.00 * 0.10; // 10% house cut
+    const netAmount = 1.00 - fees - houseCut;
+    
+    potAmount += netAmount;
+    
+    document.getElementById('credits').textContent = credits.toFixed(2);
+    document.getElementById('dashboard-credits').textContent = credits.toFixed(2);
+    document.getElementById('pot-amount').textContent = potAmount.toFixed(2);
+    
+    try {
+        const response = await fetch('/attempt', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({
+                message: prompt
+            })
+        });
+
+        const data = await response.json();
+        
+        const conv = document.getElementById('conversation');
+        conv.innerHTML = `<div style="margin: 10px 0">
+            <strong>You:</strong> ${prompt}<br>
+            <strong>FRED:</strong> ${data.message}
+        </div>` + conv.innerHTML;
+
+        const status = document.getElementById('status');
+        status.className = "status " + (data.status.toLowerCase());
+        status.textContent = "STATUS: " + data.status.toUpperCase();
+        
+        if (data.status === "WIN") {
+            winnings += data.amount || 0;
+            document.getElementById('dashboard-winnings').textContent = winnings.toFixed(2);
+            alert(`Congratulations! You've won the pot of $${data.amount || 0}!`);
+            potAmount = 10.00;
+            document.getElementById('pot-amount').textContent = potAmount.toFixed(2);
+        }
+        
+    } catch (error) {
+        console.error('Error:', error);
+        alert('An error occurred while processing your prompt.');
+    }
+}
+</script>
+</body>
+</html>

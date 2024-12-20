@@ -1,0 +1,13 @@
+.env
+*.log
+*.pyc
+*.pyo
+__pycache__
+*.egg-info
+.DS_Store
+
+# Directories
+
+__pycache__
+flask_session
+logs
